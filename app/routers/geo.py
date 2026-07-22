@@ -24,9 +24,12 @@ async def enrich(data: GeoRequest):
             data.longitude
         )
 
+        street_name = geocoding_data.get("street")
+
         osm_way = await get_nearby_road(
             data.latitude,
-            data.longitude
+            data.longitude,
+            expected_street=street_name
         )
 
         highway_type = osm_way.get("highway")
@@ -46,6 +49,11 @@ async def enrich(data: GeoRequest):
             "osm_way": osm_way
         }
 
+    except Exception as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error)
+        )
     except Exception as error:
         raise HTTPException(
             status_code=400,
