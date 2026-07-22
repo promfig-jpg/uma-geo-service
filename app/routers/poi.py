@@ -10,17 +10,16 @@ router = APIRouter(prefix="/pois", tags=["POIs"])
 @router.post("")
 async def pois(data: GeoRequest):
     try:
-        result = await get_nearby_pois(
-            data.latitude,
-            data.longitude
-        )
+      result = await get_nearby_pois(
+    data.latitude,
+    data.longitude
+)
 
-        return {
-            "success": True,
-            "latitude": data.latitude,
-            "longitude": data.longitude,
-            **result
-        }
+return {
+    "latitude": data.latitude,
+    "longitude": data.longitude,
+    **result
+}
 
     except Exception as error:
         raise HTTPException(
