@@ -1,1 +1,0 @@
-# UMA Geo Service
