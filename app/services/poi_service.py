@@ -55,9 +55,11 @@ def classify_poi(tags: dict) -> str | None:
     if amenity in {
         "university",
         "college",
-        "school",
     }:
         return "university"
+
+    if amenity == "school":
+        return "school"
 
     if amenity in {
         "hospital",
@@ -98,6 +100,7 @@ async def get_nearby_pois(
     counts = {
         "restaurants_count": 0,
         "universities_count": 0,
+        "schools_count": 0,
         "hospitals_count": 0,
         "shopping_centers_count": 0,
     }
@@ -121,12 +124,10 @@ async def get_nearby_pois(
 
         seen.add(key)
 
-        name = tags.get("name")
-
         pois.append({
             "osm_type": element.get("type"),
             "osm_id": element.get("id"),
-            "name": name,
+            "name": tags.get("name"),
             "category": category,
             "amenity": tags.get("amenity"),
             "shop": tags.get("shop"),
@@ -137,6 +138,9 @@ async def get_nearby_pois(
 
         elif category == "university":
             counts["universities_count"] += 1
+
+        elif category == "school":
+            counts["schools_count"] += 1
 
         elif category == "hospital":
             counts["hospitals_count"] += 1
