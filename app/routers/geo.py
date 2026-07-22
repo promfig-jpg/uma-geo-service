@@ -3,7 +3,6 @@ from fastapi import APIRouter, HTTPException
 from app.models.geo import GeoRequest
 from app.services.h3_service import coordinates_to_h3
 from app.services.geocoding_service import reverse_geocode
-from app.services.osm_service import get_nearby_road
 from app.services.street_service import calculate_street_importance
 
 
@@ -24,15 +23,7 @@ async def enrich(data: GeoRequest):
             data.longitude
         )
 
-        street_name = geocoding_data.get("street")
-
-        osm_way = await get_nearby_road(
-            data.latitude,
-            data.longitude,
-            expected_street=street_name
-        )
-
-        highway_type = osm_way.get("highway")
+        highway_type = geocoding_data.get("street_type")
 
         street_importance = calculate_street_importance(
             highway_type
@@ -45,15 +36,9 @@ async def enrich(data: GeoRequest):
             **h3_data,
             **geocoding_data,
             "highway_type": highway_type,
-            "street_importance": street_importance,
-            "osm_way": osm_way
+            "street_importance": street_importance
         }
 
-    except Exception as error:
-        raise HTTPException(
-            status_code=400,
-            detail=str(error)
-        )
     except Exception as error:
         raise HTTPException(
             status_code=400,
