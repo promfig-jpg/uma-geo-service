@@ -4,3 +4,4 @@ h3
 httpx
 rasterio
 numpy
+shapely
