@@ -46,25 +46,23 @@ def calculate_audience_score(
 async def find_population_dataset(
     latitude: float,
     longitude: float,
-    year: int = 2025
+    year: int = 2025,
+    iso3: str = "BRA",
 ) -> dict[str, Any] | None:
     """
     Procura no catálogo STAC WorldPop um dataset
-    recente que cubra o ponto solicitado.
+    de população total para o país e ano indicados.
 
-    Nesta fase apenas localizamos o raster.
-    A leitura dos pixels será adicionada no passo seguinte.
+    Nesta fase apenas localiza o raster.
+    A leitura dos pixels será feita depois.
     """
 
     payload = {
-        "bbox": [
-            longitude,
-            latitude,
-            longitude,
-            latitude,
-        ],
-        "datetime": f"{year}-01-01T00:00:00Z/{year}-12-31T23:59:59Z",
-        "limit": 20,
+        "datetime": (
+            f"{year}-01-01T00:00:00Z/"
+            f"{year}-12-31T23:59:59Z"
+        ),
+        "limit": 100,
     }
 
     async with httpx.AsyncClient(timeout=20.0) as client:
@@ -75,7 +73,6 @@ async def find_population_dataset(
         )
 
         response.raise_for_status()
-
         data = response.json()
 
     features = data.get("features", [])
@@ -83,21 +80,94 @@ async def find_population_dataset(
     if not features:
         return None
 
+    iso3 = iso3.upper()
+    candidates = []
+
     for feature in features:
         properties = feature.get("properties", {})
         assets = feature.get("assets", {})
 
+        feature_id = str(
+            feature.get("id", "")
+        )
+
+        feature_id_upper = feature_id.upper()
+
+        alpha3 = str(
+            properties.get(
+                "Alpha-3 code",
+                ""
+            )
+        ).upper()
+
+        # Só aceita o país pedido.
+        if (
+            alpha3 != iso3
+            and not feature_id_upper.startswith(
+                iso3 + "_"
+            )
+        ):
+            continue
+
+        # Confirma o ano real do produto.
+        product_year = properties.get("year")
+
+        if product_year is not None:
+            try:
+                if int(product_year) != year:
+                    continue
+            except (TypeError, ValueError):
+                continue
+
         text = (
-            str(feature.get("id", ""))
+            feature_id
             + " "
-            + str(properties)
+            + str(
+                properties.get(
+                    "title",
+                    ""
+                )
+            )
+            + " "
+            + str(
+                properties.get(
+                    "description",
+                    ""
+                )
+            )
         ).lower()
 
-        # Queremos população total, não idade/sexo/densidade.
+        # Queremos população total.
         if "population" not in text:
             continue
 
+        # Não queremos density.
         if "density" in text:
+            continue
+
+        # Preferimos resolução ~100 m.
+        resolution = str(
+            properties.get(
+                "resolution",
+                ""
+            )
+        ).lower()
+
+        resolution_meters = str(
+            properties.get(
+                "Resolution (in meters)",
+                ""
+            )
+        ).lower()
+
+        is_100m = (
+            "100m" in resolution
+            or "100 m" in resolution
+            or "100m" in resolution_meters
+            or "100 m" in resolution_meters
+        )
+
+        if not is_100m:
             continue
 
         raster_url = None
@@ -108,16 +178,46 @@ async def find_population_dataset(
             if not href:
                 continue
 
-            if ".tif" in href.lower():
+            href_lower = href.lower()
+
+            if (
+                ".tif" in href_lower
+                or ".tiff" in href_lower
+            ):
                 raster_url = href
                 break
 
-        if raster_url:
-            return {
-                "dataset_id": feature.get("id"),
-                "year": year,
-                "raster_url": raster_url,
-                "properties": properties,
-            }
+        if not raster_url:
+            continue
 
-    return None
+        candidates.append({
+            "dataset_id":
+                feature.get("id"),
+
+            "year":
+                year,
+
+            "iso3":
+                iso3,
+
+            "raster_url":
+                raster_url,
+
+            "properties":
+                properties,
+        })
+
+    if not candidates:
+        return None
+
+    # Preferir produto constrained (_CN_).
+    candidates.sort(
+        key=lambda item:
+            0
+            if "_CN_" in str(
+                item["dataset_id"]
+            ).upper()
+            else 1
+    )
+
+    return candidates[0]
