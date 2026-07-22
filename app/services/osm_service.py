@@ -2,7 +2,10 @@ import httpx
 import unicodedata
 
 
-OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+OVERPASS_URLS = [
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+]
 
 HEADERS = {
     "User-Agent": "UrbanMotoAds-GeoService/1.0 (https://urbanmotoads.com)",
@@ -34,7 +37,6 @@ def road_score(tags: dict, expected_street: str | None) -> int:
     expected_normalized = normalize_name(expected_street)
     name_normalized = normalize_name(name)
 
-    # Preferência máxima pela rua identificada pelo geocoding
     if expected_normalized and name_normalized:
         if expected_normalized == name_normalized:
             score += 1000
@@ -44,7 +46,6 @@ def road_score(tags: dict, expected_street: str | None) -> int:
         ):
             score += 700
 
-    # Peso pela importância real da via
     highway_scores = {
         "motorway": 100,
         "trunk": 90,
@@ -59,20 +60,16 @@ def road_score(tags: dict, expected_street: str | None) -> int:
 
     score += highway_scores.get(highway, 10)
 
-    # Penalizações para acessos internos
     if highway == "service":
         score -= 40
 
     if service == "parking_aisle":
         score -= 100
-
-    if service == "driveway":
+    elif service == "driveway":
         score -= 60
-
-    if service == "alley":
+    elif service == "alley":
         score -= 40
 
-    # Uma via com nome é normalmente mais relevante
     if name:
         score += 20
 
@@ -83,49 +80,60 @@ async def get_nearby_road(
     latitude: float,
     longitude: float,
     expected_street: str | None = None,
-    radius: int = 40,
+    radius: int = 30,
 ):
     query = f"""
-    [out:json][timeout:15];
+    [out:json][timeout:8];
     way
       [highway]
       (around:{radius},{latitude},{longitude});
-    out tags center;
+    out tags;
     """
 
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        response = await client.get(
-            OVERPASS_URL,
-            params={"data": query},
-            headers=HEADERS,
-        )
+    for url in OVERPASS_URLS:
+        try:
+            async with httpx.AsyncClient(timeout=12.0) as client:
+                response = await client.get(
+                    url,
+                    params={"data": query},
+                    headers=HEADERS,
+                )
 
-        response.raise_for_status()
+                response.raise_for_status()
 
-        data = response.json()
-        elements = data.get("elements", [])
+                elements = response.json().get("elements", [])
 
-        if not elements:
-            return {
-                "osm_id": None,
-                "highway": None,
-                "name": None,
-                "tags": {},
-            }
+                if not elements:
+                    continue
 
-        best_road = max(
-            elements,
-            key=lambda road: road_score(
-                road.get("tags", {}),
-                expected_street
-            )
-        )
+                best_road = max(
+                    elements,
+                    key=lambda road: road_score(
+                        road.get("tags", {}),
+                        expected_street,
+                    ),
+                )
 
-        tags = best_road.get("tags", {})
+                tags = best_road.get("tags", {})
 
-        return {
-            "osm_id": best_road.get("id"),
-            "highway": tags.get("highway"),
-            "name": tags.get("name"),
-            "tags": tags,
-        }
+                return {
+                    "osm_id": best_road.get("id"),
+                    "highway": tags.get("highway"),
+                    "name": tags.get("name"),
+                    "tags": tags,
+                }
+
+        except (
+            httpx.TimeoutException,
+            httpx.HTTPStatusError,
+            httpx.RequestError,
+        ):
+            continue
+
+    # Overpass indisponível não deve derrubar /geo/enrich
+    return {
+        "osm_id": None,
+        "highway": None,
+        "name": expected_street,
+        "tags": {},
+    }
