@@ -2,8 +2,9 @@ import httpx
 
 
 OVERPASS_URLS = [
-    "https://overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
+    "https://lz4.overpass-api.de/api/interpreter",
+    "https://z.overpass-api.de/api/interpreter",
 ]
 
 HEADERS = {
@@ -13,29 +14,38 @@ HEADERS = {
 }
 
 
-async def overpass_request(query: str) -> list:
+async def overpass_request(query: str) -> dict:
+    errors = []
+
     for url in OVERPASS_URLS:
         try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                response = await client.get(
+            async with httpx.AsyncClient(timeout=25.0) as client:
+                response = await client.post(
                     url,
-                    params={"data": query},
+                    data={"data": query},
                     headers=HEADERS,
                 )
 
                 response.raise_for_status()
 
-                return response.json().get("elements", [])
+                return {
+                    "success": True,
+                    "source": url,
+                    "elements": response.json().get("elements", []),
+                    "errors": [],
+                }
 
-        except (
-            httpx.TimeoutException,
-            httpx.HTTPStatusError,
-            httpx.RequestError,
-            ValueError,
-        ):
-            continue
+        except Exception as error:
+            errors.append(
+                f"{url}: {type(error).__name__}"
+            )
 
-    return []
+    return {
+        "success": False,
+        "source": None,
+        "elements": [],
+        "errors": errors,
+    }
 
 
 def classify_poi(tags: dict) -> str | None:
@@ -82,20 +92,35 @@ async def get_nearby_pois(
     radius: int = 300,
 ):
     query = f"""
-    [out:json][timeout:10];
+    [out:json][timeout:20];
     (
       nwr["amenity"~"restaurant|cafe|fast_food|bar|pub|food_court|university|college|school|hospital|clinic"]
-         (around:{radius},{latitude},{longitude});
+        (around:{radius},{latitude},{longitude});
 
       nwr["shop"~"mall|department_store"]
-         (around:{radius},{latitude},{longitude});
+        (around:{radius},{latitude},{longitude});
     );
     out center tags;
     """
 
-    elements = await overpass_request(query)
+    result = await overpass_request(query)
 
-    pois = []
+    if not result["success"]:
+        return {
+            "success": False,
+            "overpass_available": False,
+            "restaurants_count": 0,
+            "universities_count": 0,
+            "schools_count": 0,
+            "hospitals_count": 0,
+            "shopping_centers_count": 0,
+            "pois": [],
+            "radius_meters": radius,
+            "source": None,
+            "errors": result["errors"],
+        }
+
+    elements = result["elements"]
 
     counts = {
         "restaurants_count": 0,
@@ -105,6 +130,7 @@ async def get_nearby_pois(
         "shopping_centers_count": 0,
     }
 
+    pois = []
     seen = set()
 
     for element in elements:
@@ -135,21 +161,21 @@ async def get_nearby_pois(
 
         if category == "restaurant":
             counts["restaurants_count"] += 1
-
         elif category == "university":
             counts["universities_count"] += 1
-
         elif category == "school":
             counts["schools_count"] += 1
-
         elif category == "hospital":
             counts["hospitals_count"] += 1
-
         elif category == "shopping_center":
             counts["shopping_centers_count"] += 1
 
     return {
+        "success": True,
+        "overpass_available": True,
         **counts,
         "pois": pois,
         "radius_meters": radius,
+        "source": result["source"],
+        "errors": [],
     }
