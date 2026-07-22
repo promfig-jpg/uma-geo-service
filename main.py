@@ -1,3 +1,4 @@
+from app.routers.geocoding import router as geocoding_router
 from fastapi import FastAPI
 
 from app.routers.health import router as health_router
@@ -22,3 +23,4 @@ def home():
 
 app.include_router(health_router)
 app.include_router(h3_router)
+app.include_router(geocoding_router)
