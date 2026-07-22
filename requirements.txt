@@ -2,3 +2,5 @@ fastapi
 uvicorn
 h3
 httpx
+rasterio
+numpy
