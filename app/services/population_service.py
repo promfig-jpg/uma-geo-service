@@ -1,15 +1,11 @@
 import math
-import numpy as np
-import rasterio
-
-from rasterio.windows import from_bounds
-
 from typing import Any
 
 import httpx
+import numpy as np
+import rasterio
+from rasterio.windows import from_bounds
 
-
-WORLDPOP_STAC_SEARCH_URL = "https://api.stac.worldpop.org/search"
 
 HEADERS = {
     "User-Agent": "UrbanMotoAds-GeoService/1.0 (https://urbanmotoads.com)",
@@ -115,7 +111,9 @@ async def find_population_dataset(
         "raster_url": raster_url,
         "properties": properties,
     }
-    def read_population_window(
+
+
+def read_population_window(
     raster_url: str,
     latitude: float,
     longitude: float,
@@ -125,11 +123,13 @@ async def find_population_dataset(
     Lê apenas uma pequena janela do raster WorldPop
     em redor do ponto.
 
-    O raster WorldPop representa número estimado
+    O raster WorldPop representa o número estimado
     de pessoas por pixel.
     """
 
-    lat_delta = radius_meters / 111320.0
+    lat_delta = (
+        radius_meters / 111320.0
+    )
 
     cos_lat = math.cos(
         math.radians(latitude)
@@ -140,7 +140,10 @@ async def find_population_dataset(
 
     lon_delta = (
         radius_meters
-        / (111320.0 * cos_lat)
+        / (
+            111320.0
+            * cos_lat
+        )
     )
 
     west = longitude - lon_delta
@@ -148,7 +151,9 @@ async def find_population_dataset(
     south = latitude - lat_delta
     north = latitude + lat_delta
 
-    with rasterio.open(raster_url) as dataset:
+    with rasterio.open(
+        raster_url
+    ) as dataset:
         window = from_bounds(
             west,
             south,
@@ -202,7 +207,9 @@ async def find_population_dataset(
         "pixels_used":
             int(valid_data.size),
     }
-    async def get_population_estimate(
+
+
+async def get_population_estimate(
     latitude: float,
     longitude: float,
     year: int = 2025,
@@ -219,7 +226,11 @@ async def find_population_dataset(
         return {
             "success": False,
             "population_estimate": None,
-            "audience_score": 0,
+            "audience_score": 0.0,
+            "pixels_used": 0,
+            "year": year,
+            "iso3": iso3,
+            "dataset_id": None,
             "source": None,
         }
 
@@ -236,16 +247,27 @@ async def find_population_dataset(
 
     return {
         "success": True,
-        "population_estimate": estimate,
+
+        "population_estimate":
+            estimate,
+
         "audience_score":
             calculate_audience_score(
                 estimate
             ),
+
         "pixels_used":
             population["pixels_used"],
-        "year": year,
-        "iso3": iso3,
+
+        "year":
+            year,
+
+        "iso3":
+            iso3,
+
         "dataset_id":
             dataset["dataset_id"],
-        "source": "worldpop",
+
+        "source":
+            "worldpop",
     }
