@@ -1,26 +1,33 @@
 from fastapi import APIRouter, HTTPException
 
 from app.models.geo import GeoRequest
+from app.models.population import PopulationBatchRequest
+
 from app.services.population_service import (
     find_population_dataset,
-    get_population_estimate,
+)
+
+from app.services.population_batch_service import (
+    process_population_points,
 )
 
 
 router = APIRouter(
     prefix="/population",
-    tags=["Population"]
+    tags=["Population"],
 )
 
 
 @router.post("/dataset")
-async def population_dataset(data: GeoRequest):
+async def population_dataset(
+    data: GeoRequest
+):
     try:
         dataset = await find_population_dataset(
             data.latitude,
             data.longitude,
             year=2025,
-            iso3="BRA"
+            iso3="BRA",
         )
 
         return {
@@ -33,33 +40,30 @@ async def population_dataset(data: GeoRequest):
     except Exception as error:
         raise HTTPException(
             status_code=400,
-            detail=str(error)
+            detail=str(error),
         )
 
 
-@router.post("/estimate")
-async def population_estimate(data: GeoRequest):
+@router.post("/batch")
+async def population_batch(
+    data: PopulationBatchRequest
+):
     try:
-        result = await get_population_estimate(
-            data.latitude,
-            data.longitude,
-            year=2025,
-            iso3="BRA"
+        points = [
+            point.model_dump()
+            for point in data.points
+        ]
+
+        result = await process_population_points(
+            points=points,
+            iso3=data.iso3,
+            year=data.year,
         )
 
-        return {
-            "latitude": data.latitude,
-            "longitude": data.longitude,
-            **result,
-        }
+        return result
 
     except Exception as error:
         raise HTTPException(
             status_code=400,
-            detail=str(error)
-        )
-    except Exception as error:
-        raise HTTPException(
-            status_code=400,
-            detail=str(error)
+            detail=str(error),
         )
