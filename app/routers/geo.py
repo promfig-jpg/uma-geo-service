@@ -24,20 +24,16 @@ async def enrich(data: GeoRequest):
             data.longitude
         )
 
-        highway_type = None
-        street_importance = 0
-        osm_way = None
+        osm_way = await get_nearby_road(
+            data.latitude,
+            data.longitude
+        )
 
-    osm_way = await get_nearby_road(
-    data.latitude,
-    data.longitude
-)
+        highway_type = osm_way.get("highway")
 
-highway_type = osm_way.get("highway")
-
-street_importance = calculate_street_importance(
-    highway_type
-)
+        street_importance = calculate_street_importance(
+            highway_type
+        )
 
         return {
             "success": True,
