@@ -50,22 +50,15 @@ async def find_population_dataset(
     iso3: str = "BRA",
 ) -> dict[str, Any] | None:
     """
-    Procura no catálogo STAC WorldPop um dataset
+    Procura no catálogo STAC WorldPop um raster
     de população total para o país e ano indicados.
-
-    Nesta fase apenas localiza o raster.
-    A leitura dos pixels será feita depois.
     """
 
     payload = {
-        "datetime": (
-            f"{year}-01-01T00:00:00Z/"
-            f"{year}-12-31T23:59:59Z"
-        ),
-        "limit": 100,
+        "limit": 500,
     }
 
-    async with httpx.AsyncClient(timeout=20.0) as client:
+    async with httpx.AsyncClient(timeout=25.0) as client:
         response = await client.post(
             WORLDPOP_STAC_SEARCH_URL,
             json=payload,
@@ -77,21 +70,24 @@ async def find_population_dataset(
 
     features = data.get("features", [])
 
-    if not features:
-        return None
-
     iso3 = iso3.upper()
+
     candidates = []
 
     for feature in features:
-        properties = feature.get("properties", {})
-        assets = feature.get("assets", {})
-
         feature_id = str(
             feature.get("id", "")
         )
 
-        feature_id_upper = feature_id.upper()
+        properties = feature.get(
+            "properties",
+            {}
+        )
+
+        assets = feature.get(
+            "assets",
+            {}
+        )
 
         alpha3 = str(
             properties.get(
@@ -100,74 +96,72 @@ async def find_population_dataset(
             )
         ).upper()
 
-        # Só aceita o país pedido.
-        if (
-            alpha3 != iso3
-            and not feature_id_upper.startswith(
-                iso3 + "_"
+        country_name = str(
+            properties.get(
+                "name",
+                ""
             )
-        ):
+        ).lower()
+
+        product_year = properties.get(
+            "year"
+        )
+
+        title = str(
+            properties.get(
+                "title",
+                ""
+            )
+        ).lower()
+
+        description = str(
+            properties.get(
+                "description",
+                ""
+            )
+        ).lower()
+
+        combined_text = (
+            feature_id
+            + " "
+            + title
+            + " "
+            + description
+        ).lower()
+
+        # País.
+        is_country_match = (
+            alpha3 == iso3
+            or "brazil" in country_name
+            or "brazil" in title
+            or feature_id.lower().startswith(
+                iso3.lower() + "_"
+            )
+        )
+
+        if not is_country_match:
             continue
 
-        # Confirma o ano real do produto.
-        product_year = properties.get("year")
-
+        # Ano real do raster.
         if product_year is not None:
             try:
                 if int(product_year) != year:
                     continue
             except (TypeError, ValueError):
-                continue
+                pass
 
-        text = (
-            feature_id
-            + " "
-            + str(
-                properties.get(
-                    "title",
-                    ""
-                )
-            )
-            + " "
-            + str(
-                properties.get(
-                    "description",
-                    ""
-                )
-            )
-        ).lower()
-
-        # Queremos população total.
-        if "population" not in text:
+        # População total.
+        if "population" not in combined_text:
             continue
 
-        # Não queremos density.
-        if "density" in text:
+        # Excluir densidade e idade/sexo.
+        if "density" in combined_text:
             continue
 
-        # Preferimos resolução ~100 m.
-        resolution = str(
-            properties.get(
-                "resolution",
-                ""
-            )
-        ).lower()
+        if "age" in combined_text:
+            continue
 
-        resolution_meters = str(
-            properties.get(
-                "Resolution (in meters)",
-                ""
-            )
-        ).lower()
-
-        is_100m = (
-            "100m" in resolution
-            or "100 m" in resolution
-            or "100m" in resolution_meters
-            or "100 m" in resolution_meters
-        )
-
-        if not is_100m:
+        if "sex" in combined_text:
             continue
 
         raster_url = None
@@ -180,12 +174,18 @@ async def find_population_dataset(
 
             href_lower = href.lower()
 
+            if ".tif" not in href_lower:
+                continue
+
+            # Queremos o raster 100m.
             if (
-                ".tif" in href_lower
-                or ".tiff" in href_lower
+                "100m" not in href_lower
+                and "3arc" not in href_lower
             ):
-                raster_url = href
-                break
+                continue
+
+            raster_url = href
+            break
 
         if not raster_url:
             continue
@@ -195,10 +195,13 @@ async def find_population_dataset(
                 feature.get("id"),
 
             "year":
-                year,
+                product_year or year,
 
             "iso3":
                 iso3,
+
+            "country":
+                properties.get("name"),
 
             "raster_url":
                 raster_url,
@@ -210,7 +213,7 @@ async def find_population_dataset(
     if not candidates:
         return None
 
-    # Preferir produto constrained (_CN_).
+    # Preferir constrained.
     candidates.sort(
         key=lambda item:
             0
