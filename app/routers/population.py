@@ -13,11 +13,12 @@ router = APIRouter(
 @router.post("/dataset")
 async def population_dataset(data: GeoRequest):
     try:
-        dataset = await find_population_dataset(
-            data.latitude,
-            data.longitude,
-            year=2025
-        )
+    dataset = await find_population_dataset(
+    data.latitude,
+    data.longitude,
+    year=2025,
+    iso3="BRA"
+)
 
         return {
             "success": True,
