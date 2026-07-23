@@ -179,7 +179,7 @@ async def get_nearby_pois(
         "source": result["source"],
         "errors": [],
     }
-    def get_h3_bbox(
+def get_h3_bbox(
     h3_index: str
 ) -> tuple[
     float,
