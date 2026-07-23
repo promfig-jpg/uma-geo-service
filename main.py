@@ -1,3 +1,5 @@
+from app.routers.h3_coverage import router as h3_coverage_router
+
 from app.routers.population import router as population_router
 from app.routers.poi import router as poi_router
 
@@ -32,3 +34,4 @@ app.include_router(geocoding_router)
 app.include_router(geo_router)
 app.include_router(poi_router)
 app.include_router(population_router)
+app.include_router(h3_coverage_router)
