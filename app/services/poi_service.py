@@ -1,6 +1,7 @@
 import httpx
 import h3
 
+
 OVERPASS_URLS = [
     "https://overpass.kumi.systems/api/interpreter",
     "https://lz4.overpass-api.de/api/interpreter",
@@ -179,6 +180,8 @@ async def get_nearby_pois(
         "source": result["source"],
         "errors": [],
     }
+
+
 def get_h3_bbox(
     h3_index: str
 ) -> tuple[
@@ -226,8 +229,7 @@ async def get_h3_pois(
     h3_index: str
 ) -> dict:
     """
-    Obtém POIs que estão realmente dentro
-    da célula H3.
+    Obtém POIs realmente dentro da célula H3.
     """
 
     if not h3.is_valid_cell(h3_index):
@@ -354,9 +356,8 @@ async def get_h3_pois(
         latitude = float(latitude)
         longitude = float(longitude)
 
-       /*
- * Este filtro é fundamental...
- */
+        # A query usa a bounding box retangular,
+        # mas só queremos POIs dentro do hexágono H3.
         poi_h3 = h3.latlng_to_cell(
             latitude,
             longitude,
