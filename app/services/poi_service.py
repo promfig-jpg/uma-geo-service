@@ -4,6 +4,7 @@ import h3
 
 OVERPASS_URLS = [
     "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass-api.de/api/interpreter",
     "https://lz4.overpass-api.de/api/interpreter",
     "https://z.overpass-api.de/api/interpreter",
 ]
@@ -20,21 +21,46 @@ async def overpass_request(query: str) -> dict:
 
     for url in OVERPASS_URLS:
         try:
-            async with httpx.AsyncClient(timeout=25.0) as client:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(
+                    connect=10.0,
+                    read=60.0,
+                    write=20.0,
+                    pool=10.0,
+                ),
+                follow_redirects=True,
+            ) as client:
+
                 response = await client.post(
                     url,
                     data={"data": query},
                     headers=HEADERS,
                 )
 
-                response.raise_for_status()
+                if response.status_code != 200:
+                    errors.append(
+                        f"{url}: HTTP {response.status_code}"
+                    )
+                    continue
+
+                data = response.json()
 
                 return {
                     "success": True,
                     "source": url,
-                    "elements": response.json().get("elements", []),
+                    "elements": data.get("elements", []),
                     "errors": [],
                 }
+
+        except httpx.TimeoutException:
+            errors.append(
+                f"{url}: Timeout"
+            )
+
+        except httpx.HTTPError as error:
+            errors.append(
+                f"{url}: {type(error).__name__}"
+            )
 
         except Exception as error:
             errors.append(
@@ -47,8 +73,6 @@ async def overpass_request(query: str) -> dict:
         "elements": [],
         "errors": errors,
     }
-
-
 def classify_poi(tags: dict) -> str | None:
     amenity = tags.get("amenity")
     shop = tags.get("shop")
