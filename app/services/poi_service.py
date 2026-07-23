@@ -354,11 +354,9 @@ async def get_h3_pois(
         latitude = float(latitude)
         longitude = float(longitude)
 
-        /*
-         * Este filtro é fundamental:
-         * a query usa uma bounding box retangular,
-         * mas só queremos POIs dentro do hexágono H3.
-         */
+       /*
+ * Este filtro é fundamental...
+ */
         poi_h3 = h3.latlng_to_cell(
             latitude,
             longitude,
