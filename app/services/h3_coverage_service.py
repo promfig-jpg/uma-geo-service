@@ -1,3 +1,4 @@
+import math
 from typing import Any
 
 import h3
@@ -65,7 +66,6 @@ def polygon_to_h3_coverage(
             latitude,
         ])
 
-    # Fecha automaticamente o polígono.
     if (
         cleaned_coordinates[0]
         != cleaned_coordinates[-1]
@@ -86,30 +86,10 @@ def polygon_to_h3_coverage(
         resolution
     )
 
-    results = []
-
-    for h3_index in sorted(cells):
-        latitude_center, longitude_center = (
-            h3.cell_to_latlng(
-                h3_index
-            )
-        )
-
-        results.append({
-            "h3_index":
-                h3_index,
-
-            "resolution":
-                resolution,
-
-            "latitude_center":
-                float(latitude_center),
-
-            "longitude_center":
-                float(longitude_center),
-        })
-
-    return results
+    return _cells_to_results(
+        cells,
+        resolution
+    )
 
 
 def geojson_to_h3_coverage(
@@ -139,7 +119,7 @@ def geojson_to_h3_coverage(
             "Geometry coordinates are required."
         )
 
-    all_cells = {}
+    all_cells = set()
 
     if geometry_type == "Polygon":
         polygon = {
@@ -152,8 +132,7 @@ def geojson_to_h3_coverage(
             resolution
         )
 
-        for h3_index in cells:
-            all_cells[h3_index] = True
+        all_cells.update(cells)
 
     elif geometry_type == "MultiPolygon":
         for polygon_coordinates in coordinates:
@@ -168,18 +147,184 @@ def geojson_to_h3_coverage(
                 resolution
             )
 
-            for h3_index in cells:
-                all_cells[h3_index] = True
+            all_cells.update(cells)
 
     else:
         raise ValueError(
             "Only Polygon and MultiPolygon are supported."
         )
 
+    return _cells_to_results(
+        all_cells,
+        resolution
+    )
+
+
+def radius_to_h3_coverage(
+    latitude: float,
+    longitude: float,
+    radius_meters: float,
+    resolution: int = 9,
+    polygon_points: int = 72,
+) -> list[dict[str, Any]]:
+    """
+    Converte uma zona circular definida por:
+        latitude
+        longitude
+        radius_meters
+
+    num polígono aproximado e depois em células H3.
+
+    polygon_points=72 cria um círculo suficientemente
+    preciso para zonas operacionais urbanas.
+    """
+
+    latitude = float(latitude)
+    longitude = float(longitude)
+    radius_meters = float(radius_meters)
+
+    if latitude < -90 or latitude > 90:
+        raise ValueError(
+            "Invalid latitude."
+        )
+
+    if longitude < -180 or longitude > 180:
+        raise ValueError(
+            "Invalid longitude."
+        )
+
+    if radius_meters <= 0:
+        raise ValueError(
+            "radius_meters must be greater than zero."
+        )
+
+    if resolution < 0 or resolution > 15:
+        raise ValueError(
+            "H3 resolution must be between 0 and 15."
+        )
+
+    if polygon_points < 12:
+        polygon_points = 12
+
+    coordinates = []
+
+    earth_radius_m = 6371008.8
+
+    lat_rad = math.radians(
+        latitude
+    )
+
+    lon_rad = math.radians(
+        longitude
+    )
+
+    angular_distance = (
+        radius_meters
+        / earth_radius_m
+    )
+
+    for i in range(
+        polygon_points
+    ):
+        bearing = (
+            2.0
+            * math.pi
+            * i
+            / polygon_points
+        )
+
+        sin_lat = (
+            math.sin(lat_rad)
+            * math.cos(
+                angular_distance
+            )
+            + math.cos(lat_rad)
+            * math.sin(
+                angular_distance
+            )
+            * math.cos(bearing)
+        )
+
+        point_lat = math.asin(
+            sin_lat
+        )
+
+        y = (
+            math.sin(bearing)
+            * math.sin(
+                angular_distance
+            )
+            * math.cos(lat_rad)
+        )
+
+        x = (
+            math.cos(
+                angular_distance
+            )
+            - math.sin(lat_rad)
+            * math.sin(point_lat)
+        )
+
+        point_lon = (
+            lon_rad
+            + math.atan2(
+                y,
+                x
+            )
+        )
+
+        point_lat_deg = (
+            math.degrees(
+                point_lat
+            )
+        )
+
+        point_lon_deg = (
+            math.degrees(
+                point_lon
+            )
+        )
+
+        # Normaliza longitude para -180..180
+        point_lon_deg = (
+            (
+                point_lon_deg
+                + 180.0
+            )
+            % 360.0
+        ) - 180.0
+
+        coordinates.append([
+            point_lon_deg,
+            point_lat_deg,
+        ])
+
+    if (
+        coordinates[0]
+        != coordinates[-1]
+    ):
+        coordinates.append(
+            coordinates[0]
+        )
+
+    return polygon_to_h3_coverage(
+        coordinates=coordinates,
+        resolution=resolution,
+    )
+
+
+def _cells_to_results(
+    cells,
+    resolution: int,
+) -> list[dict[str, Any]]:
+    """
+    Converte índices H3 numa resposta uniforme.
+    """
+
     results = []
 
     for h3_index in sorted(
-        all_cells.keys()
+        cells
     ):
         latitude_center, longitude_center = (
             h3.cell_to_latlng(
@@ -195,10 +340,14 @@ def geojson_to_h3_coverage(
                 resolution,
 
             "latitude_center":
-                float(latitude_center),
+                float(
+                    latitude_center
+                ),
 
             "longitude_center":
-                float(longitude_center),
+                float(
+                    longitude_center
+                ),
         })
 
     return results
